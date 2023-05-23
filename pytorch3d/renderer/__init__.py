@@ -43,13 +43,15 @@ from .implicit import (
     VolumeRenderer,
     VolumeSampler,
 )
-from .lighting import AmbientLights, diffuse, DirectionalLights, PointLights, specular
+from .lighting import AmbientLights, diffuse, DirectionalLights, PointLights, SphericalHarmonicsLights, MultiPointLights, specular
 from .materials import Materials
 from .mesh import (
     gouraud_shading,
     HardFlatShader,
     HardGouraudShader,
     HardPhongShader,
+    HardPhongNormalsShader,
+    HardPhongUVShader,
     MeshRasterizer,
     MeshRenderer,
     MeshRendererWithFragments,
@@ -58,6 +60,7 @@ from .mesh import (
     rasterize_meshes,
     SoftGouraudShader,
     SoftPhongShader,
+    SoftPhongNormalsShader,
     SoftSilhouetteShader,
     SplatterPhongShader,
     Textures,

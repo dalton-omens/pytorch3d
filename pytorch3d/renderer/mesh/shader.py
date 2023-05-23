@@ -28,6 +28,7 @@ from .shading import (
     flat_shading,
     gouraud_shading,
     phong_shading,
+    phong_normals_shading
 )
 
 
@@ -46,6 +47,7 @@ class ShaderBase(nn.Module):
         lights: Optional[TensorProperties] = None,
         materials: Optional[Materials] = None,
         blend_params: Optional[BlendParams] = None,
+        use_specular = True
     ) -> None:
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -54,6 +56,7 @@ class ShaderBase(nn.Module):
         )
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
+        self.use_specular = use_specular
 
     def _get_cameras(self, **kwargs):
         cameras = kwargs.get("cameras", self.cameras)
@@ -95,6 +98,7 @@ class HardPhongShader(ShaderBase):
         lights = kwargs.get("lights", self.lights)
         materials = kwargs.get("materials", self.materials)
         blend_params = kwargs.get("blend_params", self.blend_params)
+        use_specular = kwargs.get("use_specular", self.use_specular)
         colors = phong_shading(
             meshes=meshes,
             fragments=fragments,
@@ -102,6 +106,7 @@ class HardPhongShader(ShaderBase):
             lights=lights,
             cameras=cameras,
             materials=materials,
+            use_specular=use_specular
         )
         images = hard_rgb_blend(colors, fragments, blend_params)
         return images
@@ -127,6 +132,7 @@ class SoftPhongShader(ShaderBase):
         lights = kwargs.get("lights", self.lights)
         materials = kwargs.get("materials", self.materials)
         blend_params = kwargs.get("blend_params", self.blend_params)
+        use_specular = kwargs.get("use_specular", self.use_specular)
         colors = phong_shading(
             meshes=meshes,
             fragments=fragments,
@@ -134,12 +140,73 @@ class SoftPhongShader(ShaderBase):
             lights=lights,
             cameras=cameras,
             materials=materials,
+            use_specular=use_specular
         )
         znear = kwargs.get("znear", getattr(cameras, "znear", 1.0))
         zfar = kwargs.get("zfar", getattr(cameras, "zfar", 100.0))
         images = softmax_rgb_blend(
             colors, fragments, blend_params, znear=znear, zfar=zfar
         )
+        return images
+
+
+class SoftPhongNormalsShader(ShaderBase):
+    """
+    Like SoftPhongShader but rasterizes the normals of the mesh
+    """
+
+    def forward(self, fragments: Fragments, meshes: Meshes, **kwargs) -> torch.Tensor:
+        cameras = super()._get_cameras(**kwargs)
+        blend_params = kwargs.get("blend_params", self.blend_params)
+        colors = phong_normals_shading(
+            meshes=meshes,
+            fragments=fragments
+        )
+        znear = kwargs.get("znear", getattr(cameras, "znear", 1.0))
+        zfar = kwargs.get("zfar", getattr(cameras, "zfar", 100.0))
+        images = softmax_rgb_blend(
+            colors, fragments, blend_params, znear=znear, zfar=zfar
+        )
+        return images
+
+class HardPhongNormalsShader(ShaderBase):
+    """
+    Like HardPhongShader but rasterizes the normals of the mesh
+    """
+
+    def forward(self, fragments: Fragments, meshes: Meshes, **kwargs) -> torch.Tensor:
+        blend_params = kwargs.get("blend_params", self.blend_params)
+        colors = phong_normals_shading(
+            meshes=meshes,
+            fragments=fragments
+        )
+        images = hard_rgb_blend(colors, fragments, blend_params)
+        return images
+
+class HardPhongUVShader(ShaderBase):
+    """
+    Like HardPhongShader but rasterizes the UVs of the mesh instead of the texture
+    """
+
+    def forward(self, fragments: Fragments, meshes: Meshes, **kwargs) -> torch.Tensor:
+        cameras = super()._get_cameras(**kwargs)
+        texels = meshes.sample_uv(fragments)
+        extend = torch.zeros_like(texels)[..., [0]]
+        texels = torch.cat([texels, extend], dim=-1)
+        lights = kwargs.get("lights", self.lights)
+        materials = kwargs.get("materials", self.materials)
+        blend_params = kwargs.get("blend_params", self.blend_params)
+        use_specular = kwargs.get("use_specular", self.use_specular)
+        colors = phong_shading(
+            meshes=meshes,
+            fragments=fragments,
+            texels=texels,
+            lights=lights,
+            cameras=cameras,
+            materials=materials,
+            use_specular=use_specular
+        )
+        images = hard_rgb_blend(colors, fragments, blend_params)
         return images
 
 
@@ -259,6 +326,7 @@ class HardFlatShader(ShaderBase):
         lights = kwargs.get("lights", self.lights)
         materials = kwargs.get("materials", self.materials)
         blend_params = kwargs.get("blend_params", self.blend_params)
+        use_specular = kwargs.get("use_specular", self.use_specular)
         colors = flat_shading(
             meshes=meshes,
             fragments=fragments,
@@ -266,6 +334,7 @@ class HardFlatShader(ShaderBase):
             lights=lights,
             cameras=cameras,
             materials=materials,
+            use_specular=use_specular
         )
         images = hard_rgb_blend(colors, fragments, blend_params)
         return images

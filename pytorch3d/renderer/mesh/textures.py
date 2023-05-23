@@ -1010,6 +1010,29 @@ class TexturesUV(TexturesBase):
         # texels now has shape (NK, C, H_out, W_out)
         texels = texels.reshape(N, K, C, H_out, W_out).permute(0, 3, 4, 1, 2)
         return texels
+    
+    def sample_uv(self, fragments, **kwargs) -> torch.Tensor:
+        """
+        Like sample_textures but it returns the raw UV coordinates
+        return: pixel_uvs (N, H, W, K, 2)
+        """
+        if self.isempty():
+            faces_verts_uvs = torch.zeros(
+                (self._N, 3, 2), dtype=torch.float32, device=self.device
+            )
+        else:
+            packing_list = [
+                i[j] for i, j in zip(self.verts_uvs_list(), self.faces_uvs_list())
+            ]
+            faces_verts_uvs = torch.cat(packing_list)
+        texture_maps = self.maps_padded()
+
+        # pixel_uvs: (N, H, W, K, 2)
+        pixel_uvs = interpolate_face_attributes(
+            fragments.pix_to_face, fragments.bary_coords, faces_verts_uvs
+        )
+
+        return pixel_uvs
 
     def faces_verts_textures_packed(self) -> torch.Tensor:
         """

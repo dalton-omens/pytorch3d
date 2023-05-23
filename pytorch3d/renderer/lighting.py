@@ -332,6 +332,180 @@ class AmbientLights(TensorProperties):
         return torch.zeros(*points.shape[:-1], ch, device=points.device)
 
 
+class MultiPointLights(TensorProperties):
+    def __init__(
+        self,
+        ambient_color=((0.5, 0.5, 0.5),),
+        diffuse_colors=(((0.3, 0.3, 0.3),),),
+        specular_colors=(((0.2, 0.2, 0.2),),),
+        locations=(((0, 1, 0),),),
+        device: Device = "cpu",
+    ) -> None:
+        """
+        Args:
+            ambient_color: RGB color of the ambient component
+            diffuse_colors: RGB color of the diffuse component for each light
+            specular_colors: RGB color of the specular component for each light
+            locations: xyz positions of each light
+            device: Device (as str or torch.device) on which the tensors should be located
+
+        The inputs can each be
+            - 3 element tuple/list or list of lists
+            - torch tensor of shape (1, num_lights, 3)
+            - torch tensor of shape (N, num_lights, 3)
+        The inputs are broadcast against each other so they all have batch
+        dimension N.
+        ambient_color is (1, 3) or (N, 3) because there is only one ambient color.
+        """
+        super().__init__(
+            device=device,
+            ambient_color=ambient_color,
+            diffuse_colors=diffuse_colors,
+            specular_colors=specular_colors,
+            locations=locations,
+        )
+        props = ("ambient_color", "diffuse_colors", "specular_colors")
+        for n in props:
+            t = getattr(self, n)
+            if t.shape[-1] != 3:
+                msg = "Expected %s to have shape (N, 3); got %r"
+                raise ValueError(msg % (n, t.shape))
+        if self.locations.shape[-1] != 3:
+            msg = "Expected locations to have shape (N, num_lights, 3); got %r"
+            raise ValueError(msg % repr(self.locations.shape))
+        if self.diffuse_colors.ndim != 3:
+            msg = "Expected diffuse_colors to have shape (N, num_lights, 3); got %r"
+            raise ValueError(msg % repr(self.diffuse_colors.shape))
+        if self.specular_colors.ndim != 3:
+            msg = "Expected specular_colors to have shape (N, num_lights, 3); got %r"
+            raise ValueError(msg % repr(self.specular_colors.shape))
+        if self.diffuse_colors.shape[-2] != self.specular_colors.shape[-2] or \
+           self.diffuse_colors.shape[-2] != self.locations.shape[-2]:
+            msg = "Mismatched num_lights dimension for inputs:\n" + \
+              f"diffuse_colors {diffuse_colors.shape}\nspecular_colors {specular_colors.shape}" + \
+              f"\nlocations {locations.shape}"
+            raise ValueError(msg)
+
+    def clone(self):
+        other = self.__class__(device=self.device)
+        return super().clone(other)
+
+    def reshape_location(self, points) -> torch.Tensor:
+        """
+        Reshape the location tensors to have dimensions
+        compatible with the points which can either be of
+        shape (P, 3) or (N, H, W, K, 3).
+        """
+        if self.locations.ndim - 1 == points.ndim:
+            # pyre-fixme[7]
+            return self.locations
+        # pyre-fixme[29]
+        return self.locations[:, None, None, None, :, :]
+
+    def diffuse(self, normals, points) -> torch.Tensor:
+        locations = self.reshape_location(points)
+        diffuse_sum = torch.zeros_like(normals)
+        for i in range(locations.shape[-2]):
+            location = locations[..., i, :]
+            direction = location - points
+            color = self.diffuse_colors[..., i, :]
+            diffuse_sum += diffuse(normals=normals,
+                                   color=color,
+                                   direction=direction)
+        return diffuse_sum
+
+    def specular(self, normals, points, camera_position, shininess) -> torch.Tensor:
+        locations = self.reshape_location(points)
+        specular_sum = torch.zeros_like(normals)
+        for i in range(locations.shape[-2]):
+            location = locations[..., i, :]
+            direction = location - points
+            color = self.specular_colors[..., i, :]
+            specular_sum += specular(
+                points=points,
+                normals=normals,
+                color=color,
+                direction=direction,
+                camera_position=camera_position,
+                shininess=shininess,
+            )
+        return specular_sum
+
+
+class SphericalHarmonicsLights(TensorProperties):
+    """
+    Spherical harmonics lighting for representing an environment light.
+    Depends on the normal direction, and not the view direction.
+    Ramamoorthi, et al. "An Efficient Representation for Irradiance Environment Maps" (2001)
+    """
+    def __init__(self, sh_params, device: Device = "cpu") -> None:
+        """
+        Args:
+            sh_params: (N, 9, 3) Parameters for first 3 bands of SH. The order of parameters is 
+                       [L0 L1-1 L10 L11 L2-2 L2-1 L20 L21 L22]
+            device: Device (as str or torch.device) on which the tensors should be located
+        """
+
+        '''        
+        "Grace" SH params
+        [[0.7953949,  0.4405923,  0.5459412], # 1 (L00)
+        [0.3981450,  0.3526911,  0.6097158],  # Y (L1-1)
+        [-0.3424573, -0.1838151, -0.2715583], # Z (L10)
+        [-0.2944621, -0.0560606,  0.0095193], # X (L11)
+        [-0.1123051, -0.0513088, -0.1232869], # YX (L2-2)
+        [-0.2645007, -0.2257996, -0.4785847], # YZ (L2-1)
+        [-0.1569444, -0.0954703, -0.1485053], # 3Z^2 - 1 (L20)
+        [0.5646247,  0.2161586,  0.1402643],  # XZ (L21)
+        [0.2137442, -0.0547578, -0.3061700]]  # X^2 - Y^2 (L22)
+        '''
+        super().__init__(device=device, ambient_color=((0.0, 0.0, 0.0),), sh_params=sh_params)
+
+        if len(self.sh_params.shape) != 3 or self.sh_params.shape[-2:] != (9, 3):
+            raise ValueError(f"Expected sh_params to have shape (N, 9, 3); got {self.sh_params.shape}")
+
+        self.c1 = 0.429043
+        self.c2 = 0.511664
+        self.c3 = 0.743125
+        self.c4 = 0.886227
+        self.c5 = 0.247708
+
+    def clone(self):
+        other = self.__class__(device=self.device)
+        copy = super().clone(other)
+        copy.c1 = self.c1
+        copy.c2 = self.c2
+        copy.c3 = self.c3
+        copy.c4 = self.c4
+        copy.c5 = self.c5
+        return copy
+
+    def diffuse(self, normals, points) -> torch.Tensor:
+        # normals: (B, ..., 3)
+        input_shape = normals.shape
+        B = input_shape[0]
+
+        normals = normals.view(B, -1, 3, 1)
+        x, y, z = normals.unbind(-2)
+        sh_params = self.sh_params.view(-1, 9, 1, 3)
+        color = (
+        self.c4 * sh_params[:, 0] +                                          # 1         (L00)
+        2.0 * self.c2 * sh_params[:, 1] * y +                                # Y         (L1-1)
+        2.0 * self.c2 * sh_params[:, 2]  * z +                               # Z         (L10)
+        2.0 * self.c2 * sh_params[:, 3]  * x +                               # X         (L11)
+        2.0 * self.c1 * sh_params[:, 4] * x * y +                            # YX        (L2-2)
+        2.0 * self.c1 * sh_params[:, 5] * y * z +                            # YZ        (L2-1)
+        (self.c3 * sh_params[:, 6] * z * z) - (self.c5 * sh_params[:, 6]) +  # 3Z^2 - 1  (L20)
+        2.0 * self.c1 * sh_params[:, 7]  * x * z +                           # XZ        (L21)
+        self.c1 * sh_params[:, 8] * (x * x - y * y)                          # X^2 - Y^2 (L22)
+        )
+        color = color.view(B, *input_shape[1:-1], 3)
+
+        # return torch.clip(color, 0, 1)
+        return color
+
+    def specular(self, normals, points, camera_position, shininess) -> torch.Tensor:
+        return torch.zeros_like(points)
+
 def _validate_light_properties(obj) -> None:
     props = ("ambient_color", "diffuse_color", "specular_color")
     for n in props:

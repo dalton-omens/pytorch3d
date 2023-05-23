@@ -54,9 +54,43 @@ def _apply_lighting(
         ambient_color = ambient_color[:, None, None, None, :]
     return ambient_color, diffuse_color, specular_color
 
+def _apply_lighting_nospecular(
+    points, normals, lights, cameras, materials
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Args:
+        points: torch tensor of shape (N, ..., 3) or (P, 3).
+        normals: torch tensor of shape (N, ..., 3) or (P, 3)
+        lights: instance of the Lights class.
+        cameras: instance of the Cameras class.
+        materials: instance of the Materials class.
+
+    Returns:
+        ambient_color: same shape as materials.ambient_color
+        diffuse_color: same shape as the input points
+        specular_color: same shape as the input points
+    """
+    light_diffuse = lights.diffuse(normals=normals, points=points)
+
+    ambient_color = materials.ambient_color * lights.ambient_color
+    diffuse_color = materials.diffuse_color * light_diffuse
+
+    if normals.dim() == 2 and points.dim() == 2:
+        # If given packed inputs remove batch dim in output.
+        return (
+            ambient_color.squeeze(),
+            diffuse_color.squeeze(),
+        )
+
+    if ambient_color.ndim != diffuse_color.ndim:
+        # Reshape from (N, 3) to have dimensions compatible with
+        # diffuse_color which is of shape (N, H, W, K, 3)
+        ambient_color = ambient_color[:, None, None, None, :]
+    return ambient_color, diffuse_color
+
 
 def _phong_shading_with_pixels(
-    meshes, fragments, lights, cameras, materials, texels
+    meshes, fragments, lights, cameras, materials, texels, use_specular=True
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply per pixel shading. First interpolate the vertex normals and
@@ -88,15 +122,21 @@ def _phong_shading_with_pixels(
     pixel_normals = interpolate_face_attributes(
         fragments.pix_to_face, fragments.bary_coords, faces_normals
     )
-    ambient, diffuse, specular = _apply_lighting(
-        pixel_coords_in_camera, pixel_normals, lights, cameras, materials
-    )
-    colors = (ambient + diffuse) * texels + specular
+    if use_specular:
+        ambient, diffuse, specular = _apply_lighting(
+            pixel_coords_in_camera, pixel_normals, lights, cameras, materials
+        )
+        colors = (ambient + diffuse) * texels + specular
+    else:
+        ambient, diffuse = _apply_lighting_nospecular(
+            pixel_coords_in_camera, pixel_normals, lights, cameras, materials
+        )
+        colors = (ambient + diffuse) * texels
     return colors, pixel_coords_in_camera
 
 
 def phong_shading(
-    meshes, fragments, lights, cameras, materials, texels
+    meshes, fragments, lights, cameras, materials, texels, use_specular=True
 ) -> torch.Tensor:
     """
     Apply per pixel shading. First interpolate the vertex normals and
@@ -117,10 +157,24 @@ def phong_shading(
         colors: (N, H, W, K, 3)
     """
     colors, _ = _phong_shading_with_pixels(
-        meshes, fragments, lights, cameras, materials, texels
+        meshes, fragments, lights, cameras, materials, texels, use_specular
     )
     return colors
 
+def phong_normals_shading(
+    meshes, fragments) -> torch.Tensor:
+    """
+    Like phong_shading() but just returns the per-pixel normals
+    """
+    verts = meshes.verts_packed()  # (V, 3)
+    faces = meshes.faces_packed()  # (F, 3)
+    vertex_normals = meshes.verts_normals_packed()  # (V, 3)
+    faces_verts = verts[faces]
+    faces_normals = vertex_normals[faces]
+    pixel_normals = interpolate_face_attributes(
+        fragments.pix_to_face, fragments.bary_coords, faces_normals
+    )
+    return pixel_normals
 
 def gouraud_shading(meshes, fragments, lights, cameras, materials) -> torch.Tensor:
     """
@@ -176,7 +230,7 @@ def gouraud_shading(meshes, fragments, lights, cameras, materials) -> torch.Tens
     return colors
 
 
-def flat_shading(meshes, fragments, lights, cameras, materials, texels) -> torch.Tensor:
+def flat_shading(meshes, fragments, lights, cameras, materials, texels, use_specular=True) -> torch.Tensor:
     """
     Apply per face shading. Use the average face position and the face normals
     to compute the ambient, diffuse and specular lighting. Apply the ambient
@@ -216,8 +270,14 @@ def flat_shading(meshes, fragments, lights, cameras, materials, texels) -> torch
     pixel_normals[mask] = 0.0
 
     # Calculate the illumination at each face
-    ambient, diffuse, specular = _apply_lighting(
-        pixel_coords, pixel_normals, lights, cameras, materials
-    )
-    colors = (ambient + diffuse) * texels + specular
+    if use_specular:
+        ambient, diffuse, specular = _apply_lighting(
+            pixel_coords, pixel_normals, lights, cameras, materials
+        )
+        colors = (ambient + diffuse) * texels + specular
+    else:
+        ambient, diffuse = _apply_lighting_nospecular(
+            pixel_coords, pixel_normals, lights, cameras, materials
+        )
+        colors = (ambient + diffuse) * texels
     return colors

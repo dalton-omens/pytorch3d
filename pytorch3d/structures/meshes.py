@@ -1544,6 +1544,24 @@ class Meshes:
             )
         else:
             raise ValueError("Meshes does not have textures")
+        
+    def sample_uv(self, fragments):
+        if self.textures is not None:
+
+            # Check dimensions of textures match that of meshes
+            shape_ok = self.textures.check_shapes(self._N, self._V, self._F)
+            if not shape_ok:
+                msg = "Textures do not match the dimensions of Meshes."
+                raise ValueError(msg)
+
+            # Pass in faces packed. If the textures are defined per
+            # vertex, the face indices are needed in order to interpolate
+            # the vertex attributes across the face.
+            return self.textures.sample_uv(
+                fragments, faces_packed=self.faces_packed()
+            )
+        else:
+            raise ValueError("Meshes does not have textures")
 
     def submeshes(
         self,
