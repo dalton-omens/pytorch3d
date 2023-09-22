@@ -129,6 +129,19 @@ data_source_ImplicitronDataSource_args:
     dataset_length_train: 0
     dataset_length_val: 0
     dataset_length_test: 0
+  data_loader_map_provider_TrainEvalDataLoaderMapProvider_args:
+    batch_size: 1
+    num_workers: 0
+    dataset_length_train: 0
+    dataset_length_val: 0
+    dataset_length_test: 0
+    train_conditioning_type: SAME
+    val_conditioning_type: SAME
+    test_conditioning_type: KNOWN
+    images_per_seq_options: []
+    sample_consecutive_frames: false
+    consecutive_frames_max_gap: 0
+    consecutive_frames_max_gap_seconds: 0.1
 model_factory_ImplicitronModelFactory_args:
   resume: true
   model_class_type: GenericModel
@@ -203,6 +216,7 @@ model_factory_ImplicitronModelFactory_args:
       n_rays_total_training: null
       stratified_point_sampling_training: true
       stratified_point_sampling_evaluation: false
+      cast_ray_bundle_as_cone: false
       scene_extent: 8.0
       scene_center:
       - 0.0
@@ -215,6 +229,7 @@ model_factory_ImplicitronModelFactory_args:
       n_rays_total_training: null
       stratified_point_sampling_training: true
       stratified_point_sampling_evaluation: false
+      cast_ray_bundle_as_cone: false
       min_depth: 0.1
       max_depth: 8.0
     renderer_LSTMRenderer_args:
@@ -234,6 +249,8 @@ model_factory_ImplicitronModelFactory_args:
       append_coarse_samples_to_fine: true
       density_noise_std_train: 0.0
       return_weights: false
+      blurpool_weights: false
+      sample_pdf_eps: 1.0e-05
       raymarcher_CumsumRaymarcher_args:
         surface_thickness: 1
         bg_color:
@@ -346,6 +363,7 @@ model_factory_ImplicitronModelFactory_args:
       n_hidden_neurons_dir: 128
       input_xyz: true
       xyz_ray_dir_in_camera_coords: false
+      use_integrated_positional_encoding: false
       transformer_dim_down_factor: 2.0
       n_hidden_neurons_xyz: 80
       n_layers_xyz: 2
@@ -357,6 +375,7 @@ model_factory_ImplicitronModelFactory_args:
       n_hidden_neurons_dir: 128
       input_xyz: true
       xyz_ray_dir_in_camera_coords: false
+      use_integrated_positional_encoding: false
       transformer_dim_down_factor: 1.0
       n_hidden_neurons_xyz: 256
       n_layers_xyz: 8
@@ -629,6 +648,7 @@ model_factory_ImplicitronModelFactory_args:
       n_rays_total_training: null
       stratified_point_sampling_training: true
       stratified_point_sampling_evaluation: false
+      cast_ray_bundle_as_cone: false
       scene_extent: 8.0
       scene_center:
       - 0.0
@@ -641,6 +661,7 @@ model_factory_ImplicitronModelFactory_args:
       n_rays_total_training: null
       stratified_point_sampling_training: true
       stratified_point_sampling_evaluation: false
+      cast_ray_bundle_as_cone: false
       min_depth: 0.1
       max_depth: 8.0
     renderer_LSTMRenderer_args:
@@ -660,6 +681,8 @@ model_factory_ImplicitronModelFactory_args:
       append_coarse_samples_to_fine: true
       density_noise_std_train: 0.0
       return_weights: false
+      blurpool_weights: false
+      sample_pdf_eps: 1.0e-05
       raymarcher_CumsumRaymarcher_args:
         surface_thickness: 1
         bg_color:
@@ -724,6 +747,7 @@ model_factory_ImplicitronModelFactory_args:
       n_hidden_neurons_dir: 128
       input_xyz: true
       xyz_ray_dir_in_camera_coords: false
+      use_integrated_positional_encoding: false
       transformer_dim_down_factor: 2.0
       n_hidden_neurons_xyz: 80
       n_layers_xyz: 2
@@ -735,6 +759,7 @@ model_factory_ImplicitronModelFactory_args:
       n_hidden_neurons_dir: 128
       input_xyz: true
       xyz_ray_dir_in_camera_coords: false
+      use_integrated_positional_encoding: false
       transformer_dim_down_factor: 1.0
       n_hidden_neurons_xyz: 256
       n_layers_xyz: 8
@@ -962,6 +987,7 @@ model_factory_ImplicitronModelFactory_args:
       n_hidden_neurons_dir: 128
       input_xyz: true
       xyz_ray_dir_in_camera_coords: false
+      use_integrated_positional_encoding: false
       transformer_dim_down_factor: 2.0
       n_hidden_neurons_xyz: 80
       n_layers_xyz: 2
@@ -973,6 +999,7 @@ model_factory_ImplicitronModelFactory_args:
       n_hidden_neurons_dir: 128
       input_xyz: true
       xyz_ray_dir_in_camera_coords: false
+      use_integrated_positional_encoding: false
       transformer_dim_down_factor: 1.0
       n_hidden_neurons_xyz: 256
       n_layers_xyz: 8

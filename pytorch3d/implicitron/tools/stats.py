@@ -21,7 +21,7 @@ from pytorch3d.implicitron.tools.vis_utils import get_visdom_connection
 logger = logging.getLogger(__name__)
 
 
-class AverageMeter(object):
+class AverageMeter:
     """Computes and stores the average and current value"""
 
     def __init__(self):
@@ -72,7 +72,7 @@ class AverageMeter(object):
         return self
 
 
-class Stats(object):
+class Stats:
     # TODO: update this with context manager
     """
     stats logging object useful for gathering statistics of training a deep net in pytorch
@@ -434,12 +434,9 @@ class Stats(object):
                 plt.gca().yaxis.label.set_color(c[0:3] * 0.75)
                 plt.legend(tmodes)
                 gcolor = np.array(mcolors.to_rgba("lightgray"))
-                plt.grid(
-                    b=True, which="major", color=gcolor, linestyle="-", linewidth=0.4
-                )
-                plt.grid(
-                    b=True, which="minor", color=gcolor, linestyle="--", linewidth=0.2
-                )
+                grid_params = {"visible": True, "color": gcolor}
+                plt.grid(**grid_params, which="major", linestyle="-", linewidth=0.4)
+                plt.grid(**grid_params, which="minor", linestyle="--", linewidth=0.2)
                 plt.minorticks_on()
 
             plt.tight_layout()
